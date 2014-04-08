@@ -14,22 +14,22 @@
 
 - (NSDictionary *)currentCondition
 {
-    NSDictionary *dict = self[@"data"];
-    NSArray *ar = dict[@"current_condition"];
-    return ar[0];
+  NSDictionary *dict = self[@"data"];
+  NSArray *ar = dict[@"current_condition"];
+  return ar[0];
 }
 
 - (NSDictionary *)request
 {
-    NSDictionary *dict = self[@"data"];
-    NSArray *ar = dict[@"request"];
-    return ar[0];
+  NSDictionary *dict = self[@"data"];
+  NSArray *ar = dict[@"request"];
+  return ar[0];
 }
 
 - (NSArray *)upcomingWeather
 {
-    NSDictionary *dict = self[@"data"];
-    return dict[@"weather"];
+  NSDictionary *dict = self[@"data"];
+  return dict[@"weather"];
 }
 
 @end
