@@ -13,11 +13,13 @@
 #import "NSDictionary+weather.h"
 #import "NSDictionary+weather_package.h"
 #import "UIImageView+AFNetworking.h"
+#import "WeatherHTTPClient.h"
 
 static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/weather_sample/";
 
-@interface WTTableViewController () <NSXMLParserDelegate>
-@property(strong) NSDictionary *weather;
+@interface WTTableViewController () <NSXMLParserDelegate, CLLocationManagerDelegate, UIActionSheetDelegate, WeatherHTTPClientDelegate>
+@property (strong, nonatomic) NSDictionary *weather;
+@property (strong, nonatomic)CLLocationManager *locationManager;
 
 // Needed only for XML parsing
 @property (strong, nonatomic) NSMutableDictionary *currentDict;
@@ -32,6 +34,8 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 {
   [super viewDidLoad];
   self.navigationController.toolbarHidden = NO;
+  self.locationManager = [CLLocationManager new];
+  self.locationManager.delegate = self;
 }
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender
@@ -104,9 +108,10 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
     
     strongSelf.weather = (NSDictionary *)responseObject;
     strongSelf.title = @"PLIST Retrieved";
-    [self.tableView reloadData];
+    [strongSelf.tableView reloadData];
   } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-    [self showErrorRetrievingWeatherAlert:error];
+    __strong typeof(weakSelf)strongSelf = weakSelf;
+    [strongSelf showErrorRetrievingWeatherAlert:error];
   }];
   
   [operation start];
@@ -117,6 +122,8 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
   AFHTTPRequestOperation *operation = [self operationForRequestWithFormat:@"xml"];
   operation.responseSerializer = [AFXMLParserResponseSerializer serializer];
   
+  __weak typeof(self)weakSelf = self;
+  
   [operation setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
     NSXMLParser *XMLParser = (NSXMLParser *)responseObject;
     [XMLParser setShouldProcessNamespaces:YES];
@@ -124,7 +131,8 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
     XMLParser.delegate = self;
     [XMLParser parse];
   } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-    [self showErrorRetrievingWeatherAlert:error];
+    __strong typeof(weakSelf)strongSelf = weakSelf;
+    [strongSelf showErrorRetrievingWeatherAlert:error];
   }];
   
   [operation start];
@@ -132,12 +140,13 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 
 - (IBAction)clientTapped:(id)sender
 {
-  
+  UIActionSheet *actionSheet = [[UIActionSheet alloc] initWithTitle:@"AFHTTPSessionManager" delegate:self cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil otherButtonTitles:@"HTTP GET", @"HTTP POST", nil];
+  [actionSheet showFromBarButtonItem:sender animated:YES];
 }
 
 - (IBAction)apiTapped:(id)sender
 {
-  
+  [self.locationManager startUpdatingLocation];
 }
 
 - (AFHTTPRequestOperation *)operationForRequestWithFormat:(NSString *)format
@@ -295,6 +304,75 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
   self.weather = @{@"data" : self.xmlWeatherDict};
   self.title = @"XML Retrieved";
   [self.tableView reloadData];
+}
+
+#pragma mark - CLLocationManagerDelegate
+
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations
+{
+  CLLocation *newLocation = [locations lastObject]; // Most recent location
+  
+  if ([newLocation.timestamp timeIntervalSinceNow] > 300.0) { // Ignore location if > 5 minutes old
+    return;
+  }
+  
+  [self.locationManager stopUpdatingLocation];
+  WeatherHTTPClient *client = [WeatherHTTPClient sharedWeatherHTTPClient];
+  client.delegate = self;
+  [client updateWeatherAtLocation:newLocation forNumberOfDays:5];
+}
+
+#pragma mark - UIActionSheetDelegate
+
+- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+  if (buttonIndex == [actionSheet cancelButtonIndex]) {
+    return;
+  }
+  
+  NSURL *baseUrl = [NSURL URLWithString:BaseURLString];
+  NSDictionary *parameters = @{@"format" : @"json"};
+  
+  AFHTTPSessionManager *manager = [[AFHTTPSessionManager alloc] initWithBaseURL:baseUrl];
+  manager.responseSerializer = [AFJSONResponseSerializer serializer];
+  
+  __weak typeof(self)weakSelf = self;
+  
+  if (buttonIndex == 0) { // GET
+    [manager GET:@"weather.php" parameters:parameters success:^(NSURLSessionDataTask *task, id responseObject) {
+      __strong typeof(weakSelf)strongSelf = weakSelf;
+      strongSelf.weather = responseObject;
+      strongSelf.title = @"HTTP GET";
+      [strongSelf.tableView reloadData];
+    } failure:^(NSURLSessionDataTask *task, NSError *error) {
+      __strong typeof(weakSelf)strongSelf = weakSelf;
+      [strongSelf showErrorRetrievingWeatherAlert:error];
+    }];
+  } else if (buttonIndex == 1) { // POST
+    [manager POST:@"weather.php" parameters:parameters success:^(NSURLSessionDataTask *task, id responseObject) {
+      __strong typeof(weakSelf)strongSelf = weakSelf;
+      strongSelf.weather = responseObject;
+      strongSelf.title = @"HTTP POST";
+      [strongSelf.tableView reloadData];
+    } failure:^(NSURLSessionDataTask *task, NSError *error) {
+      __strong typeof(weakSelf)strongSelf = weakSelf;
+      [strongSelf showErrorRetrievingWeatherAlert:error];
+    }];
+  }
+}
+
+#pragma mark - WeatherHTTPClientDelegate
+
+- (void)weatherHTTPClient:(WeatherHTTPClient *)client didUpdateWithWeather:(id)weather
+{
+  self.weather = weather;
+  self.title = @"API Updated";
+  [self.tableView reloadData];
+}
+
+- (void)weatherHTTPClient:(WeatherHTTPClient *)client didFailWithError:(NSError *)error
+{
+  [self showErrorRetrievingWeatherAlert:error];
 }
 
 @end
