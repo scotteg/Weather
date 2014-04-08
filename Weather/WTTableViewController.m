@@ -15,8 +15,14 @@
 
 static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/weather_sample/";
 
-@interface WTTableViewController ()
+@interface WTTableViewController () <NSXMLParserDelegate>
 @property(strong) NSDictionary *weather;
+
+// Needed only for XML parsing
+@property (strong, nonatomic) NSMutableDictionary *currentDict;
+@property (strong, nonatomic) NSMutableDictionary *xmlWeatherDict;
+@property (copy, nonatomic) NSString *elementName;
+@property (strong, nonatomic) NSMutableString *outString;
 @end
 
 @implementation WTTableViewController
@@ -107,7 +113,20 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 
 - (IBAction)xmlTapped:(id)sender
 {
+  AFHTTPRequestOperation *operation = [self operationForRequestWithFormat:@"xml"];
+  operation.responseSerializer = [AFXMLParserResponseSerializer serializer];
   
+  [operation setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
+    NSXMLParser *XMLParser = (NSXMLParser *)responseObject;
+    [XMLParser setShouldProcessNamespaces:YES];
+    
+    XMLParser.delegate = self;
+    [XMLParser parse];
+  } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+    [self showErrorRetrievingWeatherAlert:error];
+  }];
+  
+  [operation start];
 }
 
 - (IBAction)clientTapped:(id)sender
@@ -134,7 +153,33 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
   [[[UIAlertView alloc] initWithTitle:@"Error Retrieving Weather" message:[error localizedDescription] delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
 }
 
-#pragma mark - Table view data source
+- (UITableViewCell *)configureCell:(UITableViewCell *)cell atIndexPath:(NSIndexPath *)indexPath
+{
+  NSDictionary *daysWeather;
+  
+  switch (indexPath.section) {
+    case 0:
+      daysWeather = [self.weather currentCondition];
+      break;
+      
+    case 1: {
+      NSArray *upcomingWeather = [self.weather upcomingWeather];
+      daysWeather = upcomingWeather[indexPath.row];
+      break;
+    }
+      
+    default:
+      break;
+  }
+  
+  cell.textLabel.text = [daysWeather weatherDescription];
+  
+  // Further customize cell later
+  
+  return cell;
+}
+
+#pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
 {
@@ -170,37 +215,74 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
   return cell;
 }
 
-- (UITableViewCell *)configureCell:(UITableViewCell *)cell atIndexPath:(NSIndexPath *)indexPath
-{
-  NSDictionary *daysWeather;
-  
-  switch (indexPath.section) {
-    case 0:
-      daysWeather = [self.weather currentCondition];
-      break;
-      
-    case 1: {
-      NSArray *upcomingWeather = [self.weather upcomingWeather];
-      daysWeather = upcomingWeather[indexPath.row];
-      break;
-    }
-      
-    default:
-      break;
-  }
-  
-  cell.textLabel.text = [daysWeather weatherDescription];
-  
-  // Further customize cell later
-  
-  return cell;
-}
-
-#pragma mark - Table view delegate
+#pragma mark - UITableViewDelegate
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
   // Navigation logic may go here. Create and push another view controller.
+}
+
+#pragma mark - NSXMLParserDelegate
+
+- (void)parserDidStartDocument:(NSXMLParser *)parser
+{
+  self.xmlWeatherDict = [NSMutableDictionary dictionary];
+}
+
+- (void)parser:(NSXMLParser *)parser didStartElement:(NSString *)elementName namespaceURI:(NSString *)namespaceURI qualifiedName:(NSString *)qName attributes:(NSDictionary *)attributeDict
+{
+  self.elementName = qName;
+  
+  if ([qName isEqualToString:@"current_condition"] ||
+      [qName isEqualToString:@"weather"] ||
+      [qName isEqualToString:@"request"]) {
+    self.currentDict = [NSMutableDictionary dictionary];
+  }
+  
+  self.outString = [NSMutableString string];
+}
+
+- (void)parser:(NSXMLParser *)parser foundCharacters:(NSString *)string
+{
+  if (!self.elementName) {
+    return;
+  }
+  
+  [self.outString appendFormat:@"%@", string];
+}
+
+- (void)parser:(NSXMLParser *)parser didEndElement:(NSString *)elementName namespaceURI:(NSString *)namespaceURI qualifiedName:(NSString *)qName
+{
+  if ([qName isEqualToString:@"current_condition"] ||
+      [qName isEqualToString:@"request"]) {
+    self.xmlWeatherDict[qName] = @[self.currentDict];
+    self.currentDict = nil;
+  } else if ([qName isEqualToString:@"weather"]) {
+    NSMutableArray *array = self.xmlWeatherDict[@"weather"] ?: [NSMutableArray array];
+    
+    [array addObject:self.currentDict];
+    
+    self.xmlWeatherDict[@"weather"] = array;
+    self.currentDict = nil;
+  } else if ([qName isEqualToString:@"value"]) {
+    // Ingnore
+  } else if ([qName isEqualToString:@"weatherDesc"] ||
+             [qName isEqualToString:@"weatherIconUrl"]) {
+    NSDictionary *dict = @{@"value" : self.outString};
+    NSArray *array = @[dict];
+    self.currentDict[qName] = array;
+  } else if (qName) {
+    self.currentDict[qName] = self.outString;
+  }
+  
+  self.elementName = nil;
+}
+
+- (void)parserDidEndDocument:(NSXMLParser *)parser
+{
+  self.weather = @{@"data" : self.xmlWeatherDict};
+  self.title = @"XML Retrieved";
+  [self.tableView reloadData];
 }
 
 @end
