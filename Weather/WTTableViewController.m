@@ -64,22 +64,21 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 
 - (IBAction)jsonTapped:(id)sender
 {
-  // Create request
-  NSString *string = [NSString stringWithFormat:@"%@weather.php?format=json", BaseURLString];
-  NSURL *url = [NSURL URLWithString:string];
-  NSURLRequest *request = [NSURLRequest requestWithURL:url];
-  
   // Create operation with request
-  AFHTTPRequestOperation *operation = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+  AFHTTPRequestOperation *operation = [self operationForRequestWithFormat:@"json"];
   operation.responseSerializer = [AFJSONResponseSerializer serializer]; // Read response as JSON
+  
+  __weak typeof(self)weakSelf = self;
   
   // Cache response object and reload table view to display
   [operation setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
-    self.weather = (NSDictionary *)responseObject;
-    self.title = @"JSON Retrieved";
-    [self.tableView reloadData];
+    __strong typeof(weakSelf)strongSelf = weakSelf;
+    
+    strongSelf.weather = (NSDictionary *)responseObject;
+    strongSelf.title = @"JSON Retrieved";
+    [strongSelf.tableView reloadData];
   } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-    [[[UIAlertView alloc] initWithTitle:@"Error Retrieving Weather" message:[error localizedDescription] delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+    [self showErrorRetrievingWeatherAlert:error];
   }];
   
   // Don't forget to start!
@@ -88,7 +87,22 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 
 - (IBAction)plistTapped:(id)sender
 {
+  AFHTTPRequestOperation *operation = [self operationForRequestWithFormat:@"plist"];
+  operation.responseSerializer = [AFPropertyListResponseSerializer serializer];
   
+  __weak typeof(self)weakSelf = self;
+  
+  [operation setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
+    __strong typeof(weakSelf)strongSelf = weakSelf;
+    
+    strongSelf.weather = (NSDictionary *)responseObject;
+    strongSelf.title = @"PLIST Retrieved";
+    [self.tableView reloadData];
+  } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+    [self showErrorRetrievingWeatherAlert:error];
+  }];
+  
+  [operation start];
 }
 
 - (IBAction)xmlTapped:(id)sender
@@ -104,6 +118,20 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 - (IBAction)apiTapped:(id)sender
 {
   
+}
+
+- (AFHTTPRequestOperation *)operationForRequestWithFormat:(NSString *)format
+{
+  NSString *string = [NSString stringWithFormat:@"%@weather.php?format=%@", BaseURLString, format];
+  NSURL *url = [NSURL URLWithString:string];
+  NSURLRequest *request = [NSURLRequest requestWithURL:url];
+  AFHTTPRequestOperation *operation = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+  return operation;
+}
+
+- (void)showErrorRetrievingWeatherAlert:(NSError *)error
+{
+  [[[UIAlertView alloc] initWithTitle:@"Error Retrieving Weather" message:[error localizedDescription] delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
 }
 
 #pragma mark - Table view data source
