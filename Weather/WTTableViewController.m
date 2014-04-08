@@ -13,62 +13,43 @@
 #import "NSDictionary+weather.h"
 #import "NSDictionary+weather_package.h"
 
+static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/weather_sample/";
+
 @interface WTTableViewController ()
 @property(strong) NSDictionary *weather;
 @end
 
 @implementation WTTableViewController
 
-- (id)initWithStyle:(UITableViewStyle)style
-{
-  self = [super initWithStyle:style];
-  if (self) {
-    // Custom initialization
-  }
-  return self;
-}
-
 - (void)viewDidLoad
 {
   [super viewDidLoad];
   self.navigationController.toolbarHidden = NO;
-
-  // Uncomment the following line to preserve selection between presentations.
-  // self.clearsSelectionOnViewWillAppear = NO;
- 
-  // Uncomment the following line to display an Edit button in the navigation bar for this view controller.
-  // self.navigationItem.rightBarButtonItem = self.editButtonItem;
-}
-
-- (void)didReceiveMemoryWarning
-{
-  [super didReceiveMemoryWarning];
-  // Dispose of any resources that can be recreated.
 }
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender
 {
-  if([segue.identifier isEqualToString:@"WeatherDetailSegue"]){
+  if([segue.identifier isEqualToString:@"WeatherDetailSegue"]) {
     UITableViewCell *cell = (UITableViewCell *)sender;
     NSIndexPath *indexPath = [self.tableView indexPathForCell:cell];
     
-    WeatherAnimationViewController *wac = (WeatherAnimationViewController *)segue.destinationViewController;
+    WeatherAnimationViewController *weatherAnimationVC = (WeatherAnimationViewController *)segue.destinationViewController;
     
-    NSDictionary *w;
+    NSDictionary *weatherDict;
     switch (indexPath.section) {
       case 0: {
-        w = self.weather.currentCondition;
+        weatherDict = self.weather.currentCondition;
         break;
       }
       case 1: {
-        w = [self.weather upcomingWeather][indexPath.row];
+        weatherDict = [self.weather upcomingWeather][indexPath.row];
         break;
       }
       default: {
         break;
       }
     }
-    wac.weatherDictionary = w;
+    weatherAnimationVC.weatherDictionary = weatherDict;
   }
 }
 
@@ -83,7 +64,26 @@
 
 - (IBAction)jsonTapped:(id)sender
 {
+  // Create request
+  NSString *string = [NSString stringWithFormat:@"%@weather.php?format=json", BaseURLString];
+  NSURL *url = [NSURL URLWithString:string];
+  NSURLRequest *request = [NSURLRequest requestWithURL:url];
   
+  // Create operation with request
+  AFHTTPRequestOperation *operation = [[AFHTTPRequestOperation alloc] initWithRequest:request];
+  operation.responseSerializer = [AFJSONResponseSerializer serializer]; // Read response as JSON
+  
+  // Cache response object and reload table view to display
+  [operation setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, id responseObject) {
+    self.weather = (NSDictionary *)responseObject;
+    self.title = @"JSON Retrieved";
+    [self.tableView reloadData];
+  } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+    [[[UIAlertView alloc] initWithTitle:@"Error Retrieving Weather" message:[error localizedDescription] delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil] show];
+  }];
+  
+  // Don't forget to start!
+  [operation start];
 }
 
 - (IBAction)plistTapped:(id)sender
@@ -115,20 +115,58 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
-  return 0;
+  if (!self.weather) {
+    return 0;
+  }
+  
+  switch (section) {
+    case 0:
+      return 1;
+      
+    case 1: {
+      NSArray *upcomingWeather = [self.weather upcomingWeather];
+      return [upcomingWeather count];
+    }
+      
+    default:
+      return 0;
+  }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   static NSString *CellIdentifier = @"WeatherCell";
   UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:CellIdentifier forIndexPath:indexPath];
-  
-  // Configure the cell...
-  
+  [self configureCell:cell atIndexPath:indexPath];
   
   return cell;
 }
 
+- (UITableViewCell *)configureCell:(UITableViewCell *)cell atIndexPath:(NSIndexPath *)indexPath
+{
+  NSDictionary *daysWeather;
+  
+  switch (indexPath.section) {
+    case 0:
+      daysWeather = [self.weather currentCondition];
+      break;
+      
+    case 1: {
+      NSArray *upcomingWeather = [self.weather upcomingWeather];
+      daysWeather = upcomingWeather[indexPath.row];
+      break;
+    }
+      
+    default:
+      break;
+  }
+  
+  cell.textLabel.text = [daysWeather weatherDescription];
+  
+  // Further customize cell later
+  
+  return cell;
+}
 
 #pragma mark - Table view delegate
 
