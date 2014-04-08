@@ -13,11 +13,13 @@
 #import "NSDictionary+weather.h"
 #import "NSDictionary+weather_package.h"
 #import "UIImageView+AFNetworking.h"
+#import "WeatherHTTPClient.h"
 
 static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/weather_sample/";
 
-@interface WTTableViewController () <NSXMLParserDelegate, CLLocationManagerDelegate, UIActionSheetDelegate>
-@property(strong) NSDictionary *weather;
+@interface WTTableViewController () <NSXMLParserDelegate, CLLocationManagerDelegate, UIActionSheetDelegate, WeatherHTTPClientDelegate>
+@property (strong, nonatomic) NSDictionary *weather;
+@property (strong, nonatomic)CLLocationManager *locationManager;
 
 // Needed only for XML parsing
 @property (strong, nonatomic) NSMutableDictionary *currentDict;
@@ -32,6 +34,8 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 {
   [super viewDidLoad];
   self.navigationController.toolbarHidden = NO;
+  self.locationManager = [CLLocationManager new];
+  self.locationManager.delegate = self;
 }
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender
@@ -142,7 +146,7 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 
 - (IBAction)apiTapped:(id)sender
 {
-  
+  [self.locationManager startUpdatingLocation];
 }
 
 - (AFHTTPRequestOperation *)operationForRequestWithFormat:(NSString *)format
@@ -304,7 +308,19 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
 
 #pragma mark - CLLocationManagerDelegate
 
-
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations
+{
+  CLLocation *newLocation = [locations lastObject]; // Most recent location
+  
+  if ([newLocation.timestamp timeIntervalSinceNow] > 300.0) { // Ignore location if > 5 minutes old
+    return;
+  }
+  
+  [self.locationManager stopUpdatingLocation];
+  WeatherHTTPClient *client = [WeatherHTTPClient sharedWeatherHTTPClient];
+  client.delegate = self;
+  [client updateWeatherAtLocation:newLocation forNumberOfDays:5];
+}
 
 #pragma mark - UIActionSheetDelegate
 
@@ -343,6 +359,20 @@ static NSString * const BaseURLString = @"http://www.raywenderlich.com/demos/wea
       [strongSelf showErrorRetrievingWeatherAlert:error];
     }];
   }
+}
+
+#pragma mark - WeatherHTTPClientDelegate
+
+- (void)weatherHTTPClient:(WeatherHTTPClient *)client didUpdateWithWeather:(id)weather
+{
+  self.weather = weather;
+  self.title = @"API Updated";
+  [self.tableView reloadData];
+}
+
+- (void)weatherHTTPClient:(WeatherHTTPClient *)client didFailWithError:(NSError *)error
+{
+  [self showErrorRetrievingWeatherAlert:error];
 }
 
 @end

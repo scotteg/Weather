@@ -12,12 +12,4 @@
 
 @interface WTTableViewController : UITableViewController
 
-// Actions
-- (IBAction)clear:(id)sender;
-- (IBAction)jsonTapped:(id)sender;
-- (IBAction)plistTapped:(id)sender;
-- (IBAction)xmlTapped:(id)sender;
-- (IBAction)clientTapped:(id)sender;
-- (IBAction)apiTapped:(id)sender;
-
 @end
